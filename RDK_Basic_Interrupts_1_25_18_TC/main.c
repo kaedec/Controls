@@ -20,7 +20,9 @@
 /*	 12/09/09(DionM): created											*/
 /*   12/29/09(LeviB): altered to add movement functions and PmodBtn and */
 /*					  PmodSwt functionality								*/
-/*	 12/08/10(AaronO): renamed to RDK_Basic								*/	
+/*	 12/08/10(AaronO): renamed to RDK_Basic								*/
+/*   01/25/18: Display functional, IC2 & IC3 functional. Display prints */
+/*   counter indicating motion of each wheel.                           */
 /************************************************************************/
 
 /* ------------------------------------------------------------ */
@@ -100,7 +102,8 @@ static	char szScrollLeft[] = {0x1B, '[', '1', '@', 0};
 static	char szScrollRight[] = {0x1B, '[', '1', 'A', 0}; 
 static	char szWrapMode[] = {0x1B, '[', '0', 'h', 0}; 
 
-static	char szCursorPos[] = {0x1B, '[', '1', ';', '0', 'H', 0}; 
+static	char szCursorPosRow1[] = {0x1B, '[', '1', ';', '0', 'H', 0}; 
+static	char szCursorPosHome[] = {0x1B, '[', '0', ';', '0', 'H', 0}; 
 /* ------------------------------------------------------------ */
 /*				Global Variables				                */
 /* ------------------------------------------------------------ */
@@ -117,6 +120,11 @@ volatile	struct btn	PmodSwt1;
 volatile	struct btn	PmodSwt2;
 volatile	struct btn	PmodSwt3;
 volatile	struct btn	PmodSwt4;
+
+unsigned int IC2Counter = 0;
+unsigned int IC3Counter = 0;
+
+int delta_time;
 
 /* ------------------------------------------------------------ */
 /*				Forward Declarations							*/
@@ -147,12 +155,72 @@ void	Wait_ms(WORD ms);
 **		the on-board LEDs and the Pmod8LD LEDs at a regular interval.
 */
 
+// ISRs - edit and uncomment later
+
+void __ISR(_INPUT_CAPTURE_2_VECTOR, ipl6) _IC2_IntHandler(void) 
+{
+    static int time = 0;
+    static int prev_time = 0;
+	IFS0CLR	= ( 1 << 9 );	// clear interrupt flag for Input Capture 2
+    
+    //Reading the buffer
+    
+    
+    while((IC2CON & (1 << 3)) == (1 << 3)) //use a define
+    {
+        time = (int) IC2BUF;
+    }
+    
+    /*//Code routine to disable/enable interrupts and ISR
+    INTDisableInterrupts();
+    IEC0SET	= ( 0 << 9); // Sets IEC0 Bit 9 to 1 (IC2 interrupt enabled)
+    IEC0SET	= ( 1 << 9); // Sets IEC0 Bit 9 to 1 (IC2 interrupt enabled)
+    INTEnableInterrupts();*/
+    
+	IC2Counter++;
+    
+    prev_time = time;
+}
+
+void __ISR(_INPUT_CAPTURE_3_VECTOR, ipl6) _IC3_IntHandler(void) // ipl = interrupt priority level
+{
+    static int time = 0;
+    static int prev_time = 0;
+    
+	IFS0CLR	= ( 1 << 13 );	// clear interrupt flag for Input Capture 3	
+    
+    //Reading the buffer
+    
+    while((IC3CON & (1 << 3)) == (1 << 3)) //use a define
+    {
+        time = (int) IC3BUF;
+    }
+    
+    /*//Code routine to disable/enable interrupts and ISR
+    INTDisableInterrupts();
+    IEC0SET	= ( 0 << 13); // Sets IEC0 Bit 13 to 1 (IC3 interrupt enabled)    
+    IEC0SET	= ( 1 << 13); // Sets IEC0 Bit 13 to 1 (IC3 interrupt enabled)
+    INTEnableInterrupts();*/
+    
+	IC3Counter++;
+    
+    prev_time = time;
+}
+
 void __ISR(_TIMER_5_VECTOR, ipl7) Timer5Handler(void)
 {
 	static	WORD tusLeds = 0;
-	
+	static int count = 0;
 	mT5ClearIntFlag();
-	
+  /*  count++;
+        if(count > 10000)
+        {
+            count = 0;
+            IC3Counter++;  
+        }
+        
+*/
+    
 	// Read the raw state of the button pins.
 	btnBtn1.stCur = ( prtBtn1 & ( 1 << bnBtn1 ) ) ? stPressed : stReleased;
 	btnBtn2.stCur = ( prtBtn2 & ( 1 << bnBtn2 ) ) ? stPressed : stReleased;
@@ -290,7 +358,8 @@ void __ISR(_TIMER_5_VECTOR, ipl7) Timer5Handler(void)
 */
 
 int main(void) {
-
+    
+    
 	BYTE	stBtn1;
 	BYTE	stBtn2;
 
@@ -304,15 +373,18 @@ int main(void) {
 	BYTE	stPmodSwt3;
 	BYTE	stPmodSwt4;
 
-
+    char bufftemp [50]; // used for information written to display
+    
 	DeviceInit();
 	AppInit();
 
-	INTDisableInterrupts();
+	//INTDisableInterrupts();
 	DelayMs(500);
 	
 
 	//write to PmodCLS
+    int n_2 = sprintf(bufftemp ,"IC2Count: %i", IC2Counter);
+    
 	SpiEnable();
 	SpiPutBuff(szClearScreen, 3);
 	DelayMs(4);
@@ -320,18 +392,38 @@ int main(void) {
 	DelayMs(4);
 	SpiPutBuff(szCursorOff, 4);
 	DelayMs(4);
-	SpiPutBuff("Hello from", 10);
+	SpiPutBuff(bufftemp, n_2);
+    //SpiPutBuff("IC2Count: %d", 9);
+    int n_3 = sprintf(bufftemp ,"IC3Count: %i", IC3Counter);
 	DelayMs(4);
-	SpiPutBuff(szCursorPos, 6);
+	SpiPutBuff(szCursorPosRow1, 6);
 	DelayMs(4);
-	SpiPutBuff("Digilent!", 9);
+	SpiPutBuff(bufftemp, n_3);
 	DelayMs(2000);
 	SpiDisable();
 
 	prtLed1Set	= ( 1 << bnLed1 );
-	INTEnableInterrupts();
+	//INTEnableInterrupts();
 	while (fTrue)
 	{		
+        
+        
+        //write to PmodCLS
+    
+    n_2 = sprintf(bufftemp ,"IC2Count: %i", IC2Counter);
+    
+	SpiEnable();
+	DelayMs(1);
+    SpiPutBuff(szCursorPosHome, 6);
+	SpiPutBuff(bufftemp, n_2);
+    //SpiPutBuff("IC2Count: %d", 9);
+    n_3 = sprintf(bufftemp ,"IC3Count: %i", IC3Counter);
+	DelayMs(1);
+	SpiPutBuff(szCursorPosRow1, 6);
+	SpiPutBuff(bufftemp, n_3);
+	SpiDisable();
+        
+        
 		INTDisableInterrupts();
 	
 		//get data here
@@ -581,6 +673,9 @@ int main(void) {
 
 void DeviceInit() {
 
+    //Set IC2 and IC3 as inputs (they are on PORTD Pins 9/10 respectively)
+    TRISDSET = (1 << 9) | (1 << 10);
+    
 	// Configure left motor direction pin and set default direction.
 	trisMtrLeftDirClr	= ( 1 << bnMtrLeftDir );    // setting up Port D (the way we connected the hardware defines this))
 	prtMtrLeftDirClr	= ( 1 << bnMtrLeftDir );	// forward (left needs to be a 0)
@@ -614,6 +709,9 @@ void DeviceInit() {
 	OC2CONSET	= ( 1 << 15 );	// enable output compare module 2
 	OC3CONSET	= ( 1 << 15 );	// enable output compare module 3
 	//*T3CON		= ( 1 << 15 ) | ( 1 << TCKPS31 ) | ( 1 << TCKPS30); 	// timer 3 prescale = 8
+    
+    IC3CONSET = (1 << 1) | (1 << 0); // Enable IC3/IC2 capture only on Rising Edge
+    IC2CONSET = (1 << 1) | (1 << 0);
 
 	// Configure Timer 5.
 	TMR5	= 0;
@@ -621,8 +719,19 @@ void DeviceInit() {
 	IPC5SET	= ( 1 << 4 ) | ( 1 << 3 ) | ( 1 << 2 ) | ( 1 << 1 ) | ( 1 << 0 ); // interrupt priority level 7, sub 3
     // Bits 4, 3, 2 set the priority to 7 (111)
     // Bits 1 and 0 set the sub to 3 (11)
+    
+    IPC3SET	= ( 1 << 12 ) | ( 1 << 11 ) | ( 1 << 9 ) | ( 1 << 8 ); // interrupt priority level 6, sub 3
+    IPC2SET	= ( 1 << 12 ) | ( 1 << 11 ) | ( 1 << 9 ) | ( 1 << 8 ); // interrupt priority level 6, sub 3
+    
 	IFS0CLR = ( 1 << 20); // Sets IFS0 Bit 20 to 0 (no interrupt request)
-	IEC0SET	= ( 1 << 20); // Sets IEC0 Bit 20 to 1 (interrupt enabled)
+	
+    
+    IFS0CLR = ( 1 << 13); // Clears IC3 interrupt status flag
+    IFS0CLR = ( 1 << 9); // Clears IC2 interrupt status flag
+    
+    IEC0SET	= ( 1 << 13); // Sets IEC0 Bit 13 to 1 (IC3 interrupt enabled)
+    IEC0SET	= ( 1 << 9); // Sets IEC0 Bit 9 to 1 (IC2 interrupt enabled)
+    IEC0SET	= ( 1 << 20); // Sets IEC0 Bit 20 to 1 (timer 5 interrupt enabled)
 	
 	// Start timers.
 	T5CON = ( 1 << 15 ) | ( 1 << 5 ) | ( 1 << 4 ); // fTimer5 = fPb / 8
@@ -630,7 +739,12 @@ void DeviceInit() {
     
 	//enable SPI
 	SpiInit();
-
+    
+    IC2BUF = 75;
+    
+    IC3CONSET = (1 << 15); // Turn on IC3 and 2 ISRs
+    IC2CONSET = (1 << 15);
+    
 	// Enable multi-vector interrupts.
 	INTEnableSystemMultiVectoredInt();
 }

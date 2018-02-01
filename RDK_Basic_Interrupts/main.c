@@ -118,6 +118,11 @@ volatile	struct btn	PmodSwt2;
 volatile	struct btn	PmodSwt3;
 volatile	struct btn	PmodSwt4;
 
+unsigned int IC2Counter;
+unsigned int IC3Counter;
+
+unsigned int delta_time;
+
 /* ------------------------------------------------------------ */
 /*				Forward Declarations							*/
 /* ------------------------------------------------------------ */
@@ -146,6 +151,49 @@ void	Wait_ms(WORD ms);
 **		buttons. It is also used as a time base for updating
 **		the on-board LEDs and the Pmod8LD LEDs at a regular interval.
 */
+
+// ISRs - edit and uncomment later
+
+void __ISR(_INPUT_CAPTURE_2_VECTOR, ipl7) _IC2_IntHandler(void) 
+{
+    static unsigned int time = 0;
+    static unsigned int prev_time = 0;
+	IFS0CLR	= ( 1 << 9 );	// clear interrupt flag for Input Capture 2
+    
+    //Reading the buffer
+    
+    //ICtemp = IC2CON;
+    //ICtemp = 
+    while(1) // fix this too
+    {
+        time = (unsigned int) 1; // fix this
+    }
+    /*//Code routine to disable/enable interrupts and ISR
+    INTDisableInterrupts();
+    IEC0SET	= ( 0 << 9); // Sets IEC0 Bit 9 to 1 (IC2 interrupt enabled)
+    IEC0SET	= ( 1 << 9); // Sets IEC0 Bit 9 to 1 (IC2 interrupt enabled)
+    INTEnableInterrupts();*/
+    
+	IC2Counter++;
+    prev_time = time;
+}
+
+void __ISR(_INPUT_CAPTURE_3_VECTOR, ipl7) _IC3_IntHandler(void) 
+{
+	IFS0CLR	= ( 1 << 13 );	// clear interrupt flag for Input Capture 3	
+    
+    //Reading the buffer
+    
+    
+    
+    /*//Code routine to disable/enable interrupts and ISR
+    INTDisableInterrupts();
+    IEC0SET	= ( 0 << 13); // Sets IEC0 Bit 13 to 1 (IC3 interrupt enabled)    
+    IEC0SET	= ( 1 << 13); // Sets IEC0 Bit 13 to 1 (IC3 interrupt enabled)
+    INTEnableInterrupts();*/
+    
+	IC3Counter++;
+}
 
 void __ISR(_TIMER_5_VECTOR, ipl7) Timer5Handler(void)
 {
@@ -581,6 +629,9 @@ int main(void) {
 
 void DeviceInit() {
 
+    //Set IC2 and IC3 as inputs (they are on PORTD Pins 9/10 respectively)
+    TRISDSET = (1 << 9) | (1 << 10);
+    
 	// Configure left motor direction pin and set default direction.
 	trisMtrLeftDirClr	= ( 1 << bnMtrLeftDir );    // setting up Port D (the way we connected the hardware defines this))
 	prtMtrLeftDirClr	= ( 1 << bnMtrLeftDir );	// forward (left needs to be a 0)
@@ -614,6 +665,9 @@ void DeviceInit() {
 	OC2CONSET	= ( 1 << 15 );	// enable output compare module 2
 	OC3CONSET	= ( 1 << 15 );	// enable output compare module 3
 	//*T3CON		= ( 1 << 15 ) | ( 1 << TCKPS31 ) | ( 1 << TCKPS30); 	// timer 3 prescale = 8
+    
+    IC3CONSET = (1 << 15) | (1 << 1) | (1 << 0); // Enable IC3/IC2 capture only on Rising Edge
+    IC2CONSET = (1 << 15) | (1 << 1) | (1 << 0);
 
 	// Configure Timer 5.
 	TMR5	= 0;
@@ -621,8 +675,19 @@ void DeviceInit() {
 	IPC5SET	= ( 1 << 4 ) | ( 1 << 3 ) | ( 1 << 2 ) | ( 1 << 1 ) | ( 1 << 0 ); // interrupt priority level 7, sub 3
     // Bits 4, 3, 2 set the priority to 7 (111)
     // Bits 1 and 0 set the sub to 3 (11)
+    
+    IPC3SET	= ( 1 << 4 ) | ( 1 << 3 ) | ( 1 << 2 ) | ( 1 << 1 ) | ( 1 << 0 ); // interrupt priority level 7, sub 3
+    IPC2SET	= ( 1 << 4 ) | ( 1 << 3 ) | ( 1 << 2 ) | ( 1 << 1 ) | ( 1 << 0 ); // interrupt priority level 7, sub 3
+    
 	IFS0CLR = ( 1 << 20); // Sets IFS0 Bit 20 to 0 (no interrupt request)
-	IEC0SET	= ( 1 << 20); // Sets IEC0 Bit 20 to 1 (interrupt enabled)
+	
+    
+    IFS0CLR = ( 1 << 13); // Sets IFS0 Bit 13 to 0 (clear flag in init)
+    IFS0CLR = ( 1 << 9); // Sets IFS0 Bit 9 to 0 (clear flag in init)
+    
+    IEC0SET	= ( 1 << 13); // Sets IEC0 Bit 13 to 1 (IC3 interrupt enabled)
+    IEC0SET	= ( 1 << 9); // Sets IEC0 Bit 9 to 1 (IC2 interrupt enabled)
+    IEC0SET	= ( 1 << 20); // Sets IEC0 Bit 20 to 1 (interrupt enabled)
 	
 	// Start timers.
 	T5CON = ( 1 << 15 ) | ( 1 << 5 ) | ( 1 << 4 ); // fTimer5 = fPb / 8
